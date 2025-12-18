@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lyrics Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #05080f;
+      --panel: #0f1725;
+      --border: #1f2a3d;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #5eead4;
+      --accent-2: #a855f7;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Manrope", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 15% 20%, rgba(94, 234, 212, 0.08), transparent 30%),
+                  radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.1), transparent 30%),
+                  var(--bg);
+      color: var(--text);
+      padding: 32px 18px 48px;
+    }
+    .page {
+      max-width: 1040px;
+      margin: 0 auto;
+    }
+    .page-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 22px;
+    }
+    h1 {
+      font-family: "Space Grotesk", "Manrope", sans-serif;
+      font-size: 32px;
+      margin: 4px 0 6px;
+    }
+    h2 {
+      font-family: "Space Grotesk", "Manrope", sans-serif;
+      font-size: 22px;
+      margin: 0 0 10px;
+    }
+    p { margin: 0; }
+    .eyebrow {
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .muted { color: var(--muted); }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .button {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 600;
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      transition: transform 120ms ease, border-color 120ms ease;
+    }
+    .button:hover { transform: translateY(-1px); border-color: var(--accent); }
+    .button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: none; color: #0b1020; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(94, 234, 212, 0.1);
+      border: 1px solid rgba(94, 234, 212, 0.25);
+      border-radius: 999px;
+      color: var(--text);
+      font-size: 13px;
+    }
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 18px 18px;
+      box-shadow: var(--shadow);
+    }
+    form { display: grid; gap: 12px; }
+    label { display: grid; gap: 6px; font-weight: 600; color: var(--text); }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0b1020;
+      color: var(--text);
+      font-size: 15px;
+      font-family: "Manrope", sans-serif;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    .helper { font-size: 13px; color: var(--muted); }
+    .output {
+      background: linear-gradient(135deg, rgba(94, 234, 212, 0.06), rgba(168, 85, 247, 0.05)), var(--panel);
+    }
+    pre {
+      white-space: pre-wrap;
+      background: #050910;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      margin: 12px 0 0;
+      font-family: "Space Grotesk", monospace;
+      color: var(--text);
+      min-height: 170px;
+    }
+    @media (max-width: 640px) {
+      body { padding: 22px 14px 32px; }
+      .page-header { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Prototype UI</p>
+        <h1>Lyrics Generator</h1>
+        <p class="muted">Enter a theme, genre, mood, and verse count to preview placeholder lyrics. Replace the mock generator with your model call when ready.</p>
+      </div>
+      <div class="actions">
+        <a class="button" href="../">Back to repo</a>
+        <a class="button" href="https://github.com/Wesleyelsew96/lyrics-generator" target="_blank" rel="noreferrer">GitHub</a>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <div class="chip">Input</div>
+        <h2>Compose a prompt</h2>
+        <p class="muted">This form feeds the placeholder generator. Swap the handler for your backend or model call.</p>
+        <form id="lyrics-form">
+          <label>
+            Theme or prompt
+            <textarea name="prompt" placeholder="A late-night drive through neon streets." required></textarea>
+          </label>
+          <label>
+            Genre
+            <input type="text" name="genre" placeholder="synthwave, indie pop, hip-hop">
+          </label>
+          <label>
+            Mood
+            <input type="text" name="mood" placeholder="wistful, confident, upbeat">
+          </label>
+          <label>
+            Verses
+            <select name="verses">
+              <option value="1">1 verse</option>
+              <option value="2" selected>2 verses</option>
+              <option value="3">3 verses</option>
+            </select>
+          </label>
+          <label>
+            Include chorus?
+            <select name="chorus">
+              <option value="yes" selected>Yes</option>
+              <option value="no">No</option>
+            </select>
+            <span class="helper">The mock inserts a short chorus between verses when enabled.</span>
+          </label>
+          <button class="button primary" type="submit">Generate lyrics</button>
+        </form>
+      </section>
+
+      <section class="card output">
+        <div class="chip">Output</div>
+        <h2>Generated lyrics</h2>
+        <p class="muted">Placeholder output. Wire this to your model for real results.</p>
+        <pre id="lyrics-output">Waiting for input.</pre>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("lyrics-form");
+    const output = document.getElementById("lyrics-output");
+
+    const verseOpeners = [
+      "Under dim streetlights,",
+      "In the hush after midnight,",
+      "Between the skyline and the sea,",
+      "On the backroad with the windows down,",
+      "Where the static meets the signal,"
+    ];
+
+    const imagery = [
+      "echoes ride on chrome reflections",
+      "heartbeats sync with every passing sign",
+      "neon paints the fog in violet lines",
+      "rhythms bloom in borrowed time",
+      "old dreams rattle in the glovebox"
+    ];
+
+    const closures = [
+      "I keep moving just to feel the song.",
+      "we chase the moment till it fades to dawn.",
+      "nothing golden, just a voice to lean upon.",
+      "I draw the skyline in the rearview mirror.",
+      "tonight the city answers when I call."
+    ];
+
+    const chorusLines = [
+      "Bring me back to the sound, let it carry me home,",
+      "Turn the dial to the night, let the feeling be known,",
+      "If the beat is a map, I will follow it whole,",
+      "Sing it once, sing it twice, let it echo the goal,"
+    ];
+
+    const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+    const buildVerse = (prompt, genre, mood) => {
+      const snippet = prompt.length > 80 ? prompt.slice(0, 80).trim() + "..." : prompt;
+      const genreText = genre || "melody";
+      const moodText = mood || "restless";
+      return [
+        `${pick(verseOpeners)} ${snippet || "your story folds into the night"},`,
+        `${pick(imagery)} in a ${moodText} ${genreText},`,
+        pick(closures)
+      ].join("\n");
+    };
+
+    const buildChorus = (prompt) => {
+      const hook = prompt ? ` "${prompt.slice(0, 40).trim()}..."` : " this tune";
+      return [pick(chorusLines), `hold the hook of${hook}`, "keep the wheels in time, we belong on this road."].join("\n");
+    };
+
+    form?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      const prompt = (formData.get("prompt") || "").toString().trim();
+      const genre = (formData.get("genre") || "").toString().trim();
+      const mood = (formData.get("mood") || "").toString().trim();
+      const verses = Number(formData.get("verses")) || 2;
+      const includeChorus = formData.get("chorus") === "yes";
+
+      if (!prompt) {
+        output.textContent = "Add a theme or prompt to generate placeholder lyrics.";
+        return;
+      }
+
+      const blocks = [];
+      for (let i = 0; i < verses; i += 1) {
+        blocks.push(buildVerse(prompt, genre, mood));
+        if (includeChorus && i < verses - 1) {
+          blocks.push(buildChorus(prompt));
+        }
+      }
+
+      output.textContent = blocks.join("\n\n");
+    });
+  </script>
+</body>
+</html>
