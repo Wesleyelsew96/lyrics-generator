@@ -124,16 +124,20 @@ def is_chord_line(line: str) -> bool:
     s = line.strip()
     if not s:
         return False
-    # a line entirely composed of chord tokens
-    if CHORD_RE.match(s):
-        return True
-    # heuristic: high ratio of chord-like tokens
     tokens = s.split()
-    chordish = 0
+    # a line entirely composed of chord tokens
     chord_token = re.compile(r"^[A-G](?:[#b])?(?:m|maj|min|sus|dim|aug)?\d*(?:/[A-G](?:[#b])?)?$")
-    for t in tokens:
-        if chord_token.match(t):
-            chordish += 1
+    if CHORD_RE.match(s):
+        # If it's purely chords, treat it as such only when there aren't obvious lyric words
+        lyricish = any(re.search(r"[A-Za-z]{2,}", t) and not chord_token.match(t) for t in tokens)
+        if not lyricish:
+            return True
+    non_chord_words = [
+        t for t in tokens if not chord_token.match(t) and re.search(r"[A-Za-z]{2,}", t)
+    ]
+    if non_chord_words:
+        return False
+    chordish = sum(1 for t in tokens if chord_token.match(t))
     return chordish >= max(2, int(0.6 * len(tokens)))
 
 
@@ -271,6 +275,13 @@ def main():
     parser.add_argument("--input", type=str, required=True, help="Path or glob to HTML files (e.g., html/*.html)")
     parser.add_argument("--output", type=str, required=True, help="Output JSONL path")
     parser.add_argument("--limit", type=int, default=0, help="Optional limit for files processed")
+    parser.add_argument("--min_chorus_lines", type=int, default=2, help="Minimum number of lines for a chorus to keep")
+    parser.add_argument(
+        "--max_chorus_lines",
+        type=int,
+        default=32,
+        help="Maximum number of lines for a chorus (set 0 to disable the cap)",
+    )
     args = parser.parse_args()
 
     files: List[str] = []
@@ -290,6 +301,13 @@ def main():
 
     written = 0
     skipped = 0
+    skip_reasons: Dict[str, int] = {}
+
+    def register_skip(file_path: str, reason: str):
+        nonlocal skipped
+        skipped += 1
+        skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+        print(f"[skip] {file_path}: {reason}")
 
     with open(args.output, "w", encoding="utf-8") as out:
         for fp in files:
@@ -319,7 +337,13 @@ def main():
                     pass
                 chorus_lines = find_chorus(lines)
                 if not chorus_lines:
-                    skipped += 1
+                    register_skip(fp, "no chorus detected")
+                    continue
+                if args.min_chorus_lines and len(chorus_lines) < args.min_chorus_lines:
+                    register_skip(fp, f"chorus too short ({len(chorus_lines)} lines)")
+                    continue
+                if args.max_chorus_lines and args.max_chorus_lines > 0 and len(chorus_lines) > args.max_chorus_lines:
+                    register_skip(fp, f"chorus too long ({len(chorus_lines)} lines)")
                     continue
                 bpm = bpm_meta if bpm_meta is not None else extract_bpm(lines)
                 # Full lyrics (cleaned) if desired for other tasks
@@ -327,6 +351,7 @@ def main():
                 record = {
                     "title": title,
                     "chorus": "\n".join(chorus_lines).strip(),
+                    "source_path": os.path.abspath(fp),
                 }
                 if artist:
                     record["artist"] = artist
@@ -336,11 +361,16 @@ def main():
                     record["lyrics"] = full_lyrics
                 out.write(json.dumps(record, ensure_ascii=False) + "\n")
                 written += 1
-            except Exception:
-                skipped += 1
+                print(f"[ok] {fp}: {title}")
+            except Exception as exc:
+                register_skip(fp, f"exception: {exc}")
                 continue
 
     print(f"Wrote {written} records to {args.output}; skipped {skipped} files.")
+    if skip_reasons:
+        print("Skip reasons:")
+        for reason, count in skip_reasons.items():
+            print(f"- {reason}: {count}")
 
 
 if __name__ == "__main__":

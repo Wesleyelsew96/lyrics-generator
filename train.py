@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from dataclasses import dataclass
 
@@ -32,15 +32,46 @@ def build_text(example: Dict[str, str]) -> str:
     return f"Title: {title}{bpm_line}\nChorus:\n{chorus}\n"
 
 
+def guess_lora_targets(model_type: str) -> List[str]:
+    """Pick common target modules for LoRA based on model type."""
+    if model_type in {"mistral", "llama", "gemma", "phi3"}:
+        return ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    if model_type in {"gpt2"}:
+        return ["c_attn", "c_proj"]
+    # Fallback: a safe default for many decoder-only models
+    return ["q_proj", "k_proj", "v_proj", "o_proj"]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune a small LM to generate choruses from titles.")
     parser.add_argument("--data", type=str, default="data/sample.jsonl", help="Path to JSONL with {title, chorus}")
-    parser.add_argument("--output_dir", type=str, default="models/chorus-gpt2", help="Where to save the model")
-    parser.add_argument("--base_model", type=str, default="gpt2", help="HF model id, e.g., gpt2 or distilgpt2")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="models/chorus-mistral-lora",
+        help="Where to save the adapter and tokenizer",
+    )
+    parser.add_argument(
+        "--base_model",
+        type=str,
+        default="mistralai/Mistral-7B-Instruct-v0.2",
+        help="HF model id, e.g., mistralai/Mistral-7B-Instruct-v0.2 or microsoft/Phi-3-mini-4k-instruct",
+    )
     parser.add_argument("--block_size", type=int, default=256, help="Max token length")
     parser.add_argument("--epochs", type=int, default=3, help="Training epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Per-device train batch size")
     parser.add_argument("--lr", type=float, default=5e-5, help="Learning rate")
+    parser.add_argument("--no_lora", action="store_true", help="Disable LoRA and perform full fine-tuning")
+    parser.add_argument("--lora_r", type=int, default=16, help="LoRA rank")
+    parser.add_argument("--lora_alpha", type=int, default=32, help="LoRA alpha")
+    parser.add_argument("--lora_dropout", type=float, default=0.05, help="LoRA dropout")
+    parser.add_argument(
+        "--lora_target_modules",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Optional explicit LoRA target module names; defaults are chosen per model type",
+    )
     args = parser.parse_args()
 
     # Lazy imports to avoid import errors if deps aren't installed yet
@@ -52,6 +83,7 @@ def main():
         DataCollatorForLanguageModeling,
     )
     from sklearn.model_selection import train_test_split
+    from peft import LoraConfig, get_peft_model
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -89,6 +121,19 @@ def main():
     val_ds = TextDataset(val_texts)
 
     model = AutoModelForCausalLM.from_pretrained(args.base_model)
+    if not args.no_lora:
+        target_modules = args.lora_target_modules or guess_lora_targets(model.config.model_type)
+        lora_cfg = LoraConfig(
+            base_model_name_or_path=args.base_model,
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            target_modules=target_modules,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, lora_cfg)
+        print(f"Using LoRA with targets: {target_modules}")
     model.resize_token_embeddings(len(tokenizer))
 
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)

@@ -22,8 +22,22 @@ def main():
     if args.seed is not None:
         set_seed(args.seed)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
-    model = AutoModelForCausalLM.from_pretrained(args.model_dir)
+    adapter_config_path = os.path.join(args.model_dir, "adapter_config.json")
+    if os.path.exists(adapter_config_path):
+        from peft import PeftConfig, PeftModel
+
+        adapter_cfg = PeftConfig.from_pretrained(args.model_dir)
+        base_model_id = adapter_cfg.base_model_name_or_path
+        tokenizer = AutoTokenizer.from_pretrained(base_model_id)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        base_model = AutoModelForCausalLM.from_pretrained(base_model_id)
+        model = PeftModel.from_pretrained(base_model, args.model_dir)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        model = AutoModelForCausalLM.from_pretrained(args.model_dir)
 
     prompt_lines = [f"Title: {args.title}"]
     if args.bpm is not None and 30 <= args.bpm <= 300:
@@ -49,10 +63,11 @@ def main():
         pad_token_id=tokenizer.eos_token_id,
     )
 
+    prompt_token_len = input_ids.shape[1]
     print("=== Generated Chorus ===")
     for i, out in enumerate(outputs, 1):
-        full = tokenizer.decode(out, skip_special_tokens=True)
-        generated = full[len(prompt):].strip()
+        generated_ids = out[prompt_token_len:]
+        generated = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
         print(f"[{i}]\n{generated}\n")
 
 

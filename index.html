@@ -154,125 +154,147 @@
       <section class="card">
         <div class="chip">Input</div>
         <h2>Compose a prompt</h2>
-        <p class="muted">This form feeds the placeholder generator. Swap the handler for your backend or model call.</p>
+        <p class="muted">Send a request to your backend and preview the returned chorus. Update the endpoint in the script when you deploy.</p>
         <form id="lyrics-form">
           <label>
-            Theme or prompt
-            <textarea name="prompt" placeholder="A late-night drive through neon streets." required></textarea>
+            Title
+            <input type="text" name="title" placeholder="Midnight Carousel" required>
           </label>
           <label>
-            Genre
-            <input type="text" name="genre" placeholder="synthwave, indie pop, hip-hop">
+            BPM (optional)
+            <input type="number" name="bpm" placeholder="118" min="30" max="300">
+            <span class="helper">Only used when provided; ignored otherwise.</span>
           </label>
           <label>
-            Mood
-            <input type="text" name="mood" placeholder="wistful, confident, upbeat">
+            Max new tokens
+            <input type="number" name="max_new_tokens" min="16" max="256" value="80">
           </label>
           <label>
-            Verses
-            <select name="verses">
-              <option value="1">1 verse</option>
-              <option value="2" selected>2 verses</option>
-              <option value="3">3 verses</option>
-            </select>
+            Temperature
+            <input type="number" name="temperature" min="0" max="2" step="0.1" value="1.0">
           </label>
           <label>
-            Include chorus?
-            <select name="chorus">
-              <option value="yes" selected>Yes</option>
-              <option value="no">No</option>
-            </select>
-            <span class="helper">The mock inserts a short chorus between verses when enabled.</span>
+            Top-p
+            <input type="number" name="top_p" min="0" max="1" step="0.05" value="0.9">
           </label>
-          <button class="button primary" type="submit">Generate lyrics</button>
+          <label>
+            Top-k
+            <input type="number" name="top_k" min="0" max="200" step="1" value="50">
+          </label>
+          <label>
+            Number of samples
+            <input type="number" name="num_return_sequences" min="1" max="5" value="1">
+            <span class="helper">Returns multiple variations if supported by the backend.</span>
+          </label>
+          <button class="button primary" type="submit">Generate chorus</button>
         </form>
       </section>
 
       <section class="card output">
         <div class="chip">Output</div>
         <h2>Generated lyrics</h2>
-        <p class="muted">Placeholder output. Wire this to your model for real results.</p>
+        <p class="muted">Calls your backend endpoint and displays the response with title/BPM context.</p>
+        <p id="output-meta" class="muted"></p>
+        <p id="output-status" class="helper"></p>
         <pre id="lyrics-output">Waiting for input.</pre>
       </section>
     </div>
   </div>
 
   <script>
+    const API_URL = "/api/generate"; // Update to your deployed endpoint
     const form = document.getElementById("lyrics-form");
     const output = document.getElementById("lyrics-output");
+    const meta = document.getElementById("output-meta");
+    const statusEl = document.getElementById("output-status");
 
-    const verseOpeners = [
-      "Under dim streetlights,",
-      "In the hush after midnight,",
-      "Between the skyline and the sea,",
-      "On the backroad with the windows down,",
-      "Where the static meets the signal,"
-    ];
-
-    const imagery = [
-      "echoes ride on chrome reflections",
-      "heartbeats sync with every passing sign",
-      "neon paints the fog in violet lines",
-      "rhythms bloom in borrowed time",
-      "old dreams rattle in the glovebox"
-    ];
-
-    const closures = [
-      "I keep moving just to feel the song.",
-      "we chase the moment till it fades to dawn.",
-      "nothing golden, just a voice to lean upon.",
-      "I draw the skyline in the rearview mirror.",
-      "tonight the city answers when I call."
-    ];
-
-    const chorusLines = [
-      "Bring me back to the sound, let it carry me home,",
-      "Turn the dial to the night, let the feeling be known,",
-      "If the beat is a map, I will follow it whole,",
-      "Sing it once, sing it twice, let it echo the goal,"
-    ];
-
-    const pick = (list) => list[Math.floor(Math.random() * list.length)];
-
-    const buildVerse = (prompt, genre, mood) => {
-      const snippet = prompt.length > 80 ? prompt.slice(0, 80).trim() + "..." : prompt;
-      const genreText = genre || "melody";
-      const moodText = mood || "restless";
-      return [
-        `${pick(verseOpeners)} ${snippet || "your story folds into the night"},`,
-        `${pick(imagery)} in a ${moodText} ${genreText},`,
-        pick(closures)
-      ].join("\n");
+    const normalizeEntry = (entry) => {
+      if (!entry) return "";
+      if (typeof entry === "string") return entry;
+      if (entry.text) return entry.text;
+      if (entry.generated_text) return entry.generated_text;
+      if (entry.output) return entry.output;
+      if (entry.message?.content) return entry.message.content;
+      return "";
     };
 
-    const buildChorus = (prompt) => {
-      const hook = prompt ? ` "${prompt.slice(0, 40).trim()}..."` : " this tune";
-      return [pick(chorusLines), `hold the hook of${hook}`, "keep the wheels in time, we belong on this road."].join("\n");
+    const extractOutputs = (data) => {
+      if (!data) return [];
+      if (Array.isArray(data.outputs)) return data.outputs.map(normalizeEntry).filter(Boolean);
+      if (Array.isArray(data.generations)) return data.generations.map(normalizeEntry).filter(Boolean);
+      if (Array.isArray(data.choices)) return data.choices.map((c) => normalizeEntry(c) || normalizeEntry(c.text)).filter(Boolean);
+      if (typeof data.text === "string") return [data.text];
+      if (typeof data.output === "string") return [data.output];
+      return [];
     };
 
-    form?.addEventListener("submit", (e) => {
+    const formatMeta = (title, bpm) => {
+      if (!title && !bpm) return "";
+      const parts = [];
+      if (title) parts.push(`Title: ${title}`);
+      if (bpm) parts.push(`BPM: ${bpm}`);
+      return parts.join(" • ");
+    };
+
+    form?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const formData = new FormData(form);
-      const prompt = (formData.get("prompt") || "").toString().trim();
-      const genre = (formData.get("genre") || "").toString().trim();
-      const mood = (formData.get("mood") || "").toString().trim();
-      const verses = Number(formData.get("verses")) || 2;
-      const includeChorus = formData.get("chorus") === "yes";
+      const title = (formData.get("title") || "").toString().trim();
+      const bpmRaw = (formData.get("bpm") || "").toString().trim();
+      const bpm = bpmRaw ? Number(bpmRaw) : null;
+      const maxNewTokens = Number(formData.get("max_new_tokens")) || 80;
+      const temperature = Number(formData.get("temperature")) || 1.0;
+      const topP = Number(formData.get("top_p")) || 0.9;
+      const topK = Number(formData.get("top_k")) || 50;
+      const numReturnSequences = Number(formData.get("num_return_sequences")) || 1;
 
-      if (!prompt) {
-        output.textContent = "Add a theme or prompt to generate placeholder lyrics.";
+      if (!title) {
+        statusEl.textContent = "Add a title to generate lyrics.";
+        output.textContent = "Waiting for input.";
+        meta.textContent = "";
         return;
       }
 
-      const blocks = [];
-      for (let i = 0; i < verses; i += 1) {
-        blocks.push(buildVerse(prompt, genre, mood));
-        if (includeChorus && i < verses - 1) {
-          blocks.push(buildChorus(prompt));
-        }
+      meta.textContent = formatMeta(title, bpm);
+      statusEl.textContent = "Generating...";
+      output.textContent = "Awaiting backend response...";
+
+      const payload = {
+        title,
+        max_new_tokens: maxNewTokens,
+        temperature,
+        top_p: topP,
+        top_k: topK,
+        num_return_sequences: numReturnSequences,
+      };
+      if (bpm && Number.isFinite(bpm)) {
+        payload.bpm = bpm;
       }
 
-      output.textContent = blocks.join("\n\n");
+      try {
+        const resp = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        const outputs = extractOutputs(data);
+        if (!outputs.length) {
+          throw new Error("Backend returned no text");
+        }
+        const formatted = outputs
+          .map((text, idx) => `[${idx + 1}] ${text.trim() || "(empty)"}`)
+          .join("\n\n");
+        output.textContent = formatted;
+        statusEl.textContent = `Success • ${outputs.length} sample${outputs.length > 1 ? "s" : ""}`;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        statusEl.textContent = `Error: ${message}`;
+        output.textContent = "Could not fetch lyrics. Ensure your /api/generate endpoint is running.";
+      }
     });
   </script>
 </body>
